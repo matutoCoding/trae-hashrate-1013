@@ -1,0 +1,160 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: "Noto Sans SC", system-ui, -apple-system, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #e8edf5;
+  background: #0F1B2D;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background:
+    radial-gradient(ellipse at top left, rgba(53, 90, 144, 0.25) 0%, transparent 50%),
+    radial-gradient(ellipse at bottom right, rgba(233, 196, 106, 0.08) 0%, transparent 50%),
+    linear-gradient(180deg, #0F1B2D 0%, #09101c 100%);
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.glass-card {
+  background: linear-gradient(135deg, rgba(31, 57, 94, 0.6) 0%, rgba(15, 27, 45, 0.7) 100%);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(135, 162, 200, 0.15);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.gold-border {
+  border: 1px solid rgba(233, 196, 106, 0.3);
+  box-shadow: 0 0 16px rgba(233, 196, 106, 0.15), inset 0 0 20px rgba(233, 196, 106, 0.05);
+}
+
+.btn-primary {
+  @apply px-4 py-2 rounded-lg font-medium transition-all duration-200;
+  background: linear-gradient(135deg, #355a90 0%, #264775 100%);
+  border: 1px solid rgba(135, 162, 200, 0.3);
+}
+.btn-primary:hover {
+  background: linear-gradient(135deg, #5579ab 0%, #355a90 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(53, 90, 144, 0.4);
+}
+
+.btn-gold {
+  @apply px-4 py-2 rounded-lg font-medium transition-all duration-200 text-navy-900;
+  background: linear-gradient(135deg, #E9C46A 0%, #d4a93f 100%);
+  border: 1px solid rgba(233, 196, 106, 0.6);
+}
+.btn-gold:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(233, 196, 106, 0.3);
+}
+
+.btn-danger {
+  @apply px-4 py-2 rounded-lg font-medium text-white transition-all duration-200;
+  background: linear-gradient(135deg, #E63946 0%, #c12937 100%);
+  border: 1px solid rgba(230, 57, 70, 0.4);
+}
+.btn-danger:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.btn-ghost {
+  @apply px-4 py-2 rounded-lg font-medium transition-all duration-200 text-navy-100;
+  background: rgba(135, 162, 200, 0.08);
+  border: 1px solid rgba(135, 162, 200, 0.2);
+}
+.btn-ghost:hover {
+  background: rgba(135, 162, 200, 0.15);
+}
+
+.input-field {
+  @apply w-full px-3 py-2 rounded-lg text-navy-50 outline-none transition-all duration-200;
+  background: rgba(9, 16, 28, 0.6);
+  border: 1px solid rgba(135, 162, 200, 0.2);
+}
+.input-field:focus {
+  border-color: rgba(233, 196, 106, 0.5);
+  box-shadow: 0 0 0 3px rgba(233, 196, 106, 0.1);
+}
+
+.label {
+  @apply block text-sm text-navy-200 mb-1.5 font-medium;
+}
+
+.badge {
+  @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(9, 16, 28, 0.5);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(135, 162, 200, 0.3);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(135, 162, 200, 0.5);
+}
+
+.nav-link {
+  @apply flex items-center gap-3 px-4 py-3 rounded-lg text-navy-200 transition-all duration-200 cursor-pointer;
+}
+.nav-link:hover {
+  background: rgba(135, 162, 200, 0.1);
+  color: #e8edf5;
+}
+.nav-link.active {
+  background: linear-gradient(90deg, rgba(233, 196, 106, 0.15) 0%, transparent 100%);
+  color: #E9C46A;
+  border-left: 3px solid #E9C46A;
+  padding-left: 13px;
+}
+
+.page-enter {
+  animation: pageEnter 0.4s ease-out;
+}
+
+@keyframes pageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.danger-glow {
+  animation: danger-glow 1.5s ease-in-out infinite;
+}
+@keyframes danger-glow {
+  0%, 100% { box-shadow: 0 0 8px rgba(230, 57, 70, 0.4), 0 0 2px rgba(230, 57, 70, 0.8); }
+  50% { box-shadow: 0 0 24px rgba(230, 57, 70, 0.8), 0 0 6px rgba(230, 57, 70, 1); }
+}

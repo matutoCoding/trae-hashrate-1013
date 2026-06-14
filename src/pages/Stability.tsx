@@ -1,25 +1,37 @@
 import { useMemo, useState } from 'react';
-import { AlertTriangle, Crosshair, AlertOctagon, Zap, TrendingUp, Activity, Gauge } from 'lucide-react';
+import { AlertTriangle, Crosshair, AlertOctagon, Zap, TrendingUp, Activity, Gauge, ShieldCheck, X, CheckCircle2 } from 'lucide-react';
 import PageHeader from '@/components/PageHeader';
 import RatingBadge from '@/components/RatingBadge';
 import { useAppStore } from '@/store';
-import { calculateLoads, calculateStability, generateWarnings, calculateSafetyRating } from '@/utils/physics';
+import { calculateLoads, calculateStability, generateWarnings, calculateSafetyRating, applyImpactFactor } from '@/utils/physics';
 import type { WarningItem } from '@/types';
 
 export default function Stability() {
-  const { actors, formations, currentFormationId, addTrainingRecord } = useAppStore();
+  const { actors, formations, currentFormationId, addTrainingRecord, addSafeScheme } = useAppStore();
   const formation = formations.find((f) => f.id === currentFormationId) || null;
   const [impactMode, setImpactMode] = useState(false);
   const [shaking, setShaking] = useState(false);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [saveName, setSaveName] = useState('');
+  const [saveNotes, setSaveNotes] = useState('');
 
-  const { stability, loads, rating } = useMemo(() => {
-    if (!formation) return { stability: null, loads: [], rating: null };
-    const L = calculateLoads(formation, actors);
+  const { stability, staticLoads, displayLoads, rating } = useMemo(() => {
+    if (!formation) return { stability: null, staticLoads: [], displayLoads: [], rating: null };
+    const staticLoads = calculateLoads(formation, actors);
     const S = calculateStability(formation, actors);
-    const W = generateWarnings(L, S, formation, actors);
-    const R = calculateSafetyRating(L, S, W, formation.difficulty);
-    return { stability: S, loads: L, rating: R };
+    const useLoads = impactMode ? applyImpactFactor(staticLoads, 1.35) : staticLoads;
+    const W = generateWarnings(useLoads, S, formation, actors);
+    const R = calculateSafetyRating(useLoads, S, W, formation.difficulty);
+    return { stability: S, staticLoads, displayLoads: useLoads, rating: R };
   }, [formation, actors, impactMode]);
+
+  const canSaveAsScheme = useMemo(() => {
+    if (!formation || !rating) return false;
+    const allAssigned = formation.positions.every((p) => p.actorId);
+    const noDanger = rating.warnings.filter((w) => w.level === 'danger').length === 0;
+    const gradeOk = rating.grade === 'A' || rating.grade === 'B';
+    return allAssigned && noDanger && gradeOk;
+  }, [formation, rating]);
 
   const warningLevelColor = (level: WarningItem['level']) => {
     if (level === 'danger') return { bg: 'rgba(230, 57, 70, 0.15)', border: '#E63946', text: '#E63946', icon: AlertOctagon };
@@ -46,6 +58,32 @@ export default function Stability() {
     setTimeout(() => setShaking(false), 800);
   };
 
+  const handleSaveScheme = () => {
+    if (!formation || !rating || !canSaveAsScheme) return;
+    const name = saveName.trim() || formation.name;
+    const totalActors = formation.positions.filter((p) => p.actorId).length;
+    addSafeScheme({
+      name,
+      formationSnapshot: JSON.parse(JSON.stringify(formation)),
+      safetyRating: rating,
+      totalActors,
+      totalWeight: stability?.totalWeight ?? 0,
+      notes: saveNotes.trim() || undefined,
+    });
+    setShowSaveModal(false);
+    setSaveName('');
+    setSaveNotes('');
+    alert('安全方案已保存到方案库');
+  };
+
+  const openSaveModal = () => {
+    setSaveName(formation?.name || '');
+    setSaveNotes('');
+    setShowSaveModal(true);
+  };
+
+  const baseLayerLoads = displayLoads.filter((l) => l.layer === 0);
+
   return (
     <div className="p-8">
       <PageHeader
@@ -62,9 +100,13 @@ export default function Stability() {
                 <Zap className="w-4 h-4" />
                 模拟晃动冲击
               </button>
-              <button onClick={handleRecordTraining} className="btn-gold flex items-center gap-2">
-                <Activity className="w-4 h-4" />
-                记录训练
+              <button
+                onClick={openSaveModal}
+                disabled={!canSaveAsScheme}
+                className={`flex items-center gap-2 ${canSaveAsScheme ? 'btn-gold' : 'btn-ghost opacity-50 cursor-not-allowed'}`}
+              >
+                <ShieldCheck className="w-4 h-4" />
+                保存为安全方案
               </button>
             </div>
           )
@@ -74,8 +116,13 @@ export default function Stability() {
       {formation && stability && rating ? (
         <div className="grid grid-cols-12 gap-6">
           <div className="col-span-12 lg:col-span-5 space-y-6">
-            <div className="glass-card rounded-xl p-6 text-center">
-              <div className="text-sm text-navy-300 mb-3">安全评级</div>
+            <div className="glass-card rounded-xl p-6 text-center relative overflow-hidden">
+              {impactMode && (
+                <div className="absolute top-0 left-0 right-0 bg-safety-orange/20 text-safety-orange text-xs py-1 font-medium">
+                  ⚡ 冲击荷载模式（×1.35）
+                </div>
+              )}
+              <div className="text-sm text-navy-300 mb-3 mt-2">安全评级 {impactMode && <span className="text-safety-orange">(冲击工况)</span>}</div>
               <div className="mb-4">
                 <RatingBadge rating={rating} size="lg" />
               </div>
@@ -94,6 +141,12 @@ export default function Stability() {
                   }}
                 />
               </div>
+              {!canSaveAsScheme && (
+                <div className="mt-4 text-xs text-navy-400 flex items-center justify-center gap-1">
+                  <AlertTriangle className="w-3 h-3" />
+                  当前队形不符合安全方案入库条件
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -102,7 +155,7 @@ export default function Stability() {
                   <Crosshair className="w-3.5 h-3.5 text-safety-gold" />
                   重心 X 偏移
                 </div>
-                <div className={`text-2xl font-bold ${Math.abs(stability.centerX) > 0.3 ? 'text-safety-red' : 'text-safety-green'}`}>
+                <div className={`text-2xl font-bold ${Math.abs(stability.centerX) > 0.5 ? 'text-safety-red' : 'text-safety-green'}`}>
                   {(stability.centerX * 100).toFixed(1)}<span className="text-sm font-normal text-navy-400 ml-1">%</span>
                 </div>
               </div>
@@ -138,14 +191,14 @@ export default function Stability() {
             <div className="glass-card rounded-xl p-5">
               <h3 className="font-semibold text-navy-50 mb-4 flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 text-safety-gold" />
-                风险告警列表
+                风险告警列表 {impactMode && <span className="text-xs text-safety-orange font-normal">· 冲击工况</span>}
               </h3>
               {rating.warnings.length === 0 ? (
                 <div className="text-center py-8 text-navy-400">
                   <div className="w-12 h-12 rounded-full bg-safety-green/15 flex items-center justify-center mx-auto mb-3">
-                    <Activity className="w-6 h-6 text-safety-green" />
+                    <CheckCircle2 className="w-6 h-6 text-safety-green" />
                   </div>
-                  <div>当前队形安全，无告警</div>
+                  <div>当前队形 {impactMode ? '冲击下' : ''}安全，无告警</div>
                 </div>
               ) : (
                 <div className="space-y-2 max-h-72 overflow-auto">
@@ -167,6 +220,28 @@ export default function Stability() {
                   })}
                 </div>
               )}
+            </div>
+
+            <div className="glass-card rounded-xl p-5">
+              <h3 className="font-semibold text-navy-50 mb-3 flex items-center gap-2">
+                <Activity className="w-4 h-4 text-safety-gold" />
+                入库条件检查
+              </h3>
+              <div className="space-y-2 text-sm">
+                {[
+                  { label: '全员分配', pass: formation.positions.every((p) => p.actorId) },
+                  { label: '无危险告警', pass: rating.warnings.filter((w) => w.level === 'danger').length === 0 },
+                  { label: '评级 A 或 B 级', pass: rating.grade === 'A' || rating.grade === 'B' },
+                ].map((item, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    {item.pass
+                      ? <CheckCircle2 className="w-4 h-4 text-safety-green" />
+                      : <AlertOctagon className="w-4 h-4 text-safety-red" />
+                    }
+                    <span className={item.pass ? 'text-navy-200' : 'text-navy-400'}>{item.label}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -198,9 +273,13 @@ export default function Stability() {
                     />
                   )}
 
-                  {stability.polygonVertices.map((v, i) => (
-                    <circle key={i} cx={v.x} cy={v.y - 0.5} r="0.045" fill="#1f395e" stroke="#E9C46A" strokeWidth="0.015" />
-                  ))}
+                  {baseLayerLoads.map((load, i) => {
+                    const totalInBase = baseLayerLoads.length;
+                    const x = totalInBase > 1 ? -1 + (2 * i) / (totalInBase - 1) : 0;
+                    return (
+                      <circle key={i} cx={x} cy={-0.5} r="0.045" fill="#1f395e" stroke="#E9C46A" strokeWidth="0.015" />
+                    );
+                  })}
 
                   <g className={shaking ? 'animate-pulse' : ''}>
                     <circle
@@ -230,7 +309,7 @@ export default function Stability() {
                   </g>
 
                   <text x="-1.25" y="-0.75" fontSize="0.06" fill="#87a2c8">重心 G</text>
-                  <text x="0.9" y="-0.75" fontSize="0.06" fill="#87a2c8">支撑区域</text>
+                  <text x="0.85" y="-0.75" fontSize="0.06" fill="#87a2c8">支撑区域</text>
                 </svg>
                 <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-xs">
                   <div className="flex items-center gap-3">
@@ -240,7 +319,7 @@ export default function Stability() {
                     </span>
                     <span className="flex items-center gap-1.5">
                       <span className="w-3 h-3 rounded-full border-2 border-safety-gold bg-navy-800" />
-                      <span className="text-navy-300">支撑点</span>
+                      <span className="text-navy-300">底座支撑点</span>
                     </span>
                   </div>
                   <span className={`font-semibold ${stability.isWithinPolygon ? 'text-safety-green' : 'text-safety-red'}`}>
@@ -291,40 +370,79 @@ export default function Stability() {
               </div>
             </div>
 
-            {impactMode && (
-              <div className="glass-card rounded-xl p-5 border border-safety-orange/40 animate-pulse">
-                <div className="flex items-center gap-2 mb-3">
-                  <Zap className="w-5 h-5 text-safety-orange" />
-                  <h3 className="font-semibold text-safety-orange">冲击荷载模拟结果</h3>
+            <div className={`glass-card rounded-xl p-5 border transition-all ${impactMode ? 'border-safety-orange/40' : 'border-navy-700/40'}`}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Zap className={`w-5 h-5 ${impactMode ? 'text-safety-orange' : 'text-navy-400'}`} />
+                  <h3 className={`font-semibold ${impactMode ? 'text-safety-orange' : 'text-navy-200'}`}>冲击荷载模拟</h3>
                 </div>
-                <p className="text-sm text-navy-300 mb-2">当演员发生晃动或脱手时，瞬时冲击荷载约为静态荷载的 1.35 倍。</p>
-                <div className="grid grid-cols-3 gap-3 text-center">
-                  <div className="bg-navy-900/40 rounded-lg p-3">
-                    <div className="text-xs text-navy-400">静态总承重</div>
-                    <div className="text-lg font-bold text-navy-50">
-                      {loads.filter(l => l.layer === 0).reduce((s, l) => s + l.cumulativeLoad, 0).toFixed(1)} kg
-                    </div>
-                  </div>
-                  <div className="bg-navy-900/40 rounded-lg p-3">
-                    <div className="text-xs text-navy-400">冲击总承重</div>
-                    <div className="text-lg font-bold text-safety-orange">
-                      {loads.filter(l => l.layer === 0).reduce((s, l) => s + l.impactLoad, 0).toFixed(1)} kg
-                    </div>
-                  </div>
-                  <div className="bg-navy-900/40 rounded-lg p-3">
-                    <div className="text-xs text-navy-400">放大系数</div>
-                    <div className="text-lg font-bold text-safety-gold">×1.35</div>
-                  </div>
-                </div>
-                <button onClick={() => setImpactMode(false)} className="btn-ghost mt-4 text-xs py-1.5">关闭模拟</button>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={impactMode}
+                    onChange={(e) => setImpactMode(e.target.checked)}
+                    className="w-4 h-4 accent-safety-orange"
+                  />
+                  <span className="text-sm text-navy-300">启用冲击模式</span>
+                </label>
               </div>
-            )}
+              <p className="text-sm text-navy-300 mb-3">当演员发生晃动或脱手时，瞬时冲击荷载约为静态荷载的 1.35 倍。启用后所有超载判断、告警与评级将基于冲击荷载重新计算。</p>
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="bg-navy-900/40 rounded-lg p-3">
+                  <div className="text-xs text-navy-400">静态底座总承重</div>
+                  <div className="text-lg font-bold text-navy-50">
+                    {staticLoads.filter(l => l.layer === 0).reduce((s, l) => s + l.cumulativeLoad, 0).toFixed(1)} kg
+                  </div>
+                </div>
+                <div className="bg-navy-900/40 rounded-lg p-3">
+                  <div className="text-xs text-navy-400">冲击底座总承重</div>
+                  <div className="text-lg font-bold text-safety-orange">
+                    {displayLoads.filter(l => l.layer === 0).reduce((s, l) => s + l.cumulativeLoad, 0).toFixed(1)} kg
+                  </div>
+                </div>
+                <div className="bg-navy-900/40 rounded-lg p-3">
+                  <div className="text-xs text-navy-400">放大系数</div>
+                  <div className="text-lg font-bold text-safety-gold">×1.35</div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       ) : (
         <div className="glass-card rounded-xl p-16 text-center">
           <AlertTriangle className="w-16 h-16 mx-auto text-navy-600 mb-4" />
           <p className="text-navy-300">请先在「队形搭建」中创建或选择队形</p>
+        </div>
+      )}
+
+      {showSaveModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="glass-card rounded-2xl p-6 w-full max-w-md">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="font-display text-xl text-navy-50">保存为安全方案</h3>
+              <button onClick={() => setShowSaveModal(false)} className="p-2 rounded-lg hover:bg-navy-700/50 text-navy-300">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="label">方案名称</label>
+                <input className="input-field" value={saveName} onChange={(e) => setSaveName(e.target.value)} />
+              </div>
+              <div>
+                <label className="label">备注（可选）</label>
+                <textarea className="input-field h-20 resize-none" value={saveNotes} onChange={(e) => setSaveNotes(e.target.value)} />
+              </div>
+              <div className="bg-safety-green/10 border border-safety-green/30 rounded-lg p-3 text-sm text-safety-green">
+                <div className="font-medium mb-1">✓ 符合入库条件</div>
+                <div className="text-xs opacity-80">该队形已通过安全校核，将存入方案库</div>
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end mt-6">
+              <button onClick={() => setShowSaveModal(false)} className="btn-ghost">取消</button>
+              <button onClick={handleSaveScheme} className="btn-gold">保存方案</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

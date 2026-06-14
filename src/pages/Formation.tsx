@@ -1,7 +1,8 @@
-import { useState } from 'react';
-import { Layers, Plus, Trash2, ChevronDown, User as UserIcon, X, Settings2 } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Layers, Plus, Trash2, ChevronDown, User as UserIcon, X, Settings2, ShieldCheck } from 'lucide-react';
 import PageHeader from '@/components/PageHeader';
 import { useAppStore } from '@/store';
+import { calculateLoads, calculateStability, generateWarnings, calculateSafetyRating } from '@/utils/physics';
 import type { Formation as FormationType, Position } from '@/types';
 
 const difficultyLabels: Record<FormationType['difficulty'], string> = {
@@ -12,12 +13,15 @@ const difficultyLabels: Record<FormationType['difficulty'], string> = {
 };
 
 export default function Formation() {
-  const { actors, formations, currentFormationId, setCurrentFormation, createFormation, updateFormation, deleteFormation, assignActorToPosition } = useAppStore();
+  const { actors, formations, currentFormationId, setCurrentFormation, createFormation, updateFormation, deleteFormation, assignActorToPosition, addSafeScheme } = useAppStore();
   const [selectedPos, setSelectedPos] = useState<string | null>(null);
   const [showNewForm, setShowNewForm] = useState(false);
   const [newName, setNewName] = useState('');
   const [newLayers, setNewLayers] = useState(3);
   const [newDiff, setNewDiff] = useState<FormationType['difficulty']>('normal');
+  const [showSaveScheme, setShowSaveScheme] = useState(false);
+  const [schemeName, setSchemeName] = useState('');
+  const [schemeNotes, setSchemeNotes] = useState('');
 
   const formation = formations.find((f) => f.id === currentFormationId) || null;
 
@@ -47,6 +51,42 @@ export default function Formation() {
   const getActor = (id?: string) => actors.find((a) => a.id === id);
   const usedActorIds = new Set(formation?.positions.filter((p) => p.actorId).map((p) => p.actorId!) || []);
 
+  const { canSaveScheme, safetyRating, stability } = useMemo(() => {
+    if (!formation) return { canSaveScheme: false, safetyRating: null, stability: null };
+    const L = calculateLoads(formation, actors);
+    const S = calculateStability(formation, actors);
+    const W = generateWarnings(L, S, formation, actors);
+    const R = calculateSafetyRating(L, S, W, formation.difficulty);
+    const allAssigned = formation.positions.every((p) => p.actorId);
+    const noDanger = W.filter((w) => w.level === 'danger').length === 0;
+    const gradeOk = R.grade === 'A' || R.grade === 'B';
+    return { canSaveScheme: allAssigned && noDanger && gradeOk, safetyRating: R, stability: S };
+  }, [formation, actors]);
+
+  const handleSaveScheme = () => {
+    if (!formation || !safetyRating || !canSaveScheme) return;
+    const name = schemeName.trim() || formation.name;
+    const totalActors = formation.positions.filter((p) => p.actorId).length;
+    addSafeScheme({
+      name,
+      formationSnapshot: JSON.parse(JSON.stringify(formation)),
+      safetyRating,
+      totalActors,
+      totalWeight: stability?.totalWeight ?? 0,
+      notes: schemeNotes.trim() || undefined,
+    });
+    setShowSaveScheme(false);
+    setSchemeName('');
+    setSchemeNotes('');
+    alert('安全方案已保存到方案库');
+  };
+
+  const openSaveScheme = () => {
+    setSchemeName(formation?.name || '');
+    setSchemeNotes('');
+    setShowSaveScheme(true);
+  };
+
   return (
     <div className="p-8">
       <PageHeader
@@ -67,7 +107,17 @@ export default function Formation() {
               </select>
               <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-navy-400 pointer-events-none" />
             </div>
-            <button onClick={() => setShowNewForm(true)} className="btn-gold flex items-center gap-2">
+            {formation && (
+              <button
+                onClick={openSaveScheme}
+                disabled={!canSaveScheme}
+                className={`flex items-center gap-2 ${canSaveScheme ? 'btn-gold' : 'btn-ghost opacity-50 cursor-not-allowed'}`}
+              >
+                <ShieldCheck className="w-4 h-4" />
+                保存为安全方案
+              </button>
+            )}
+            <button onClick={() => setShowNewForm(true)} className="btn-primary flex items-center gap-2">
               <Plus className="w-4 h-4" />
               <span>新建队形</span>
             </button>
@@ -241,6 +291,37 @@ export default function Formation() {
             <div className="flex gap-3 justify-end mt-6">
               <button onClick={() => setShowNewForm(false)} className="btn-ghost">取消</button>
               <button onClick={handleCreate} className="btn-gold">创建</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSaveScheme && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="glass-card rounded-2xl p-6 w-full max-w-md">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="font-display text-xl text-navy-50">保存为安全方案</h3>
+              <button onClick={() => setShowSaveScheme(false)} className="p-2 rounded-lg hover:bg-navy-700/50 text-navy-300">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="label">方案名称</label>
+                <input className="input-field" value={schemeName} onChange={(e) => setSchemeName(e.target.value)} />
+              </div>
+              <div>
+                <label className="label">备注（可选）</label>
+                <textarea className="input-field h-20 resize-none" value={schemeNotes} onChange={(e) => setSchemeNotes(e.target.value)} />
+              </div>
+              <div className="bg-safety-green/10 border border-safety-green/30 rounded-lg p-3 text-sm text-safety-green">
+                <div className="font-medium mb-1">✓ 符合入库条件</div>
+                <div className="text-xs opacity-80">该队形已通过安全校核，将存入方案库</div>
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end mt-6">
+              <button onClick={() => setShowSaveScheme(false)} className="btn-ghost">取消</button>
+              <button onClick={handleSaveScheme} className="btn-gold">保存方案</button>
             </div>
           </div>
         </div>

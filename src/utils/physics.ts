@@ -100,19 +100,26 @@ export function calculateStability(formation: Formation, actors: Actor[]): Stabi
   const centerX = totalW > 0 ? sumX / totalW : 0;
   const centerY = totalW > 0 ? sumY / totalW : 0;
 
-  const polygonVertices: { x: number; y: number }[] = [];
-  for (const pos of baseLayer) {
-    const idx = pos.index;
-    const totalInBase = baseLayer.length;
-    const x = totalInBase > 1 ? -1 + (2 * idx) / (totalInBase - 1) : 0;
-    polygonVertices.push({ x, y: 0 });
+  const baseCount = baseLayer.length;
+  let leftEdge = -1;
+  let rightEdge = 1;
+  if (baseCount > 1) {
+    const spacing = 2 / (baseCount - 1);
+    leftEdge = -1 - spacing * 0.4;
+    rightEdge = 1 + spacing * 0.4;
+  } else if (baseCount === 1) {
+    leftEdge = -0.35;
+    rightEdge = 0.35;
   }
-  if (polygonVertices.length === 1) {
-    polygonVertices.unshift({ x: polygonVertices[0].x - 0.15, y: 0 });
-    polygonVertices.push({ x: polygonVertices[1].x + 0.15, y: 0 });
-    polygonVertices.push({ x: polygonVertices[2].x, y: 0.3 });
-    polygonVertices.push({ x: polygonVertices[0].x, y: 0.3 });
-  }
+  const frontEdge = -0.3;
+  const backEdge = 0.3;
+
+  const polygonVertices: { x: number; y: number }[] = [
+    { x: leftEdge, y: frontEdge },
+    { x: rightEdge, y: frontEdge },
+    { x: rightEdge, y: backEdge },
+    { x: leftEdge, y: backEdge },
+  ];
 
   const isWithin = isPointInPolygon({ x: centerX, y: 0 }, polygonVertices);
 
@@ -144,13 +151,12 @@ export function calculateStability(formation: Formation, actors: Actor[]): Stabi
   const bottomW = bottomHalf.reduce((a, b) => a + b.weight, 0);
   const topHeavyRatio = bottomW > 0 ? topW / bottomW : 0;
 
-  let deviation = 0;
-  if (polygonVertices.length >= 3) {
-    const minX = Math.min(...polygonVertices.map((p) => p.x));
-    const maxX = Math.max(...polygonVertices.map((p) => p.x));
-    const halfSpan = (maxX - minX) / 2;
-    deviation = halfSpan > 0 ? Math.abs(centerX) / halfSpan : 0;
-  }
+  const halfWidth = (rightEdge - leftEdge) / 2;
+  const centerOffsetX = Math.abs(centerX);
+  const marginRatioX = 1 - centerOffsetX / halfWidth;
+  const halfDepth = (backEdge - frontEdge) / 2;
+  const marginRatio = Math.min(marginRatioX, 1);
+  const deviation = marginRatio >= 0 ? 1 - marginRatio : Math.abs(marginRatio) + 1;
 
   const polygonArea = polygonAreaCalc(polygonVertices);
 
@@ -309,6 +315,19 @@ export function calculateSafetyRating(loads: LoadResult[], stability: StabilityR
   else grade = 'D';
 
   return { grade, score, warnings };
+}
+
+export function applyImpactFactor(loads: LoadResult[], factor: number = 1.35): LoadResult[] {
+  return loads.map((l) => {
+    const impactLoad = l.cumulativeLoad * factor;
+    const loadRatio = l.maxCapacity > 0 ? impactLoad / l.maxCapacity : 0;
+    return {
+      ...l,
+      impactLoad,
+      loadRatio,
+      isOverloaded: loadRatio > 1,
+    };
+  });
 }
 
 export function buildPyramidFormation(layers: number): Position[] {

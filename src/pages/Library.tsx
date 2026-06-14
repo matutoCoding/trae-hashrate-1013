@@ -1,19 +1,11 @@
-import { useMemo, useState, useRef } from 'react';
-import { Database, Trash2, Download, Upload, FileText, Calendar, Users, Layers, ChevronRight, Eye, X, ClipboardList } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { Database, Trash2, Download, Upload, FileText, Calendar, Users, Layers, ChevronRight, Eye, X, ClipboardList, ShieldCheck } from 'lucide-react';
 import PageHeader from '@/components/PageHeader';
 import RatingBadge from '@/components/RatingBadge';
 import { useAppStore } from '@/store';
-import { calculateLoads, calculateStability, generateWarnings, calculateSafetyRating } from '@/utils/physics';
-import type { Formation, Position } from '@/types';
+import type { SafeScheme, Formation, Position } from '@/types';
 
-type Tab = 'formations' | 'records';
-
-const difficultyLabels: Record<Formation['difficulty'], { label: string; color: string }> = {
-  easy: { label: '简单', color: '#2A9D8F' },
-  normal: { label: '普通', color: '#E9C46A' },
-  hard: { label: '困难', color: '#F4A261' },
-  extreme: { label: '极限', color: '#E63946' },
-};
+type Tab = 'schemes' | 'records';
 
 function MiniFormationPreview({ formation }: { formation: Formation }) {
   const layers: Position[][] = [];
@@ -35,10 +27,10 @@ function MiniFormationPreview({ formation }: { formation: Formation }) {
               x={startX + i * 28 - 10}
               y={y}
               width="20" height="18" rx="3"
-              fill={hasActor ? '#355a90' : '#1a2f4d'}
-              stroke={hasActor ? '#87a2c8' : '#264775'}
+              fill={hasActor ? '#2A9D8F' : '#1a2f4d'}
+              stroke={hasActor ? '#5579ab' : '#264775'}
               strokeWidth="0.8"
-              opacity={hasActor ? 1 : 0.6}
+              opacity={hasActor ? 1 : 0.5}
             />
           );
         });
@@ -48,24 +40,13 @@ function MiniFormationPreview({ formation }: { formation: Formation }) {
 }
 
 export default function Library() {
-  const { actors, formations, trainingRecords, setCurrentFormation, deleteFormation, deleteTrainingRecord, importData } = useAppStore();
-  const [tab, setTab] = useState<Tab>('formations');
+  const { actors, safeSchemes, trainingRecords, deleteSafeScheme, deleteTrainingRecord, importData, setCurrentFormation, formations } = useAppStore();
+  const [tab, setTab] = useState<Tab>('schemes');
   const [detailId, setDetailId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const formationRatings = useMemo(() => {
-    const map = new Map<string, ReturnType<typeof calculateSafetyRating>>();
-    for (const f of formations) {
-      const L = calculateLoads(f, actors);
-      const S = calculateStability(f, actors);
-      const W = generateWarnings(L, S, f, actors);
-      map.set(f.id, calculateSafetyRating(L, S, W, f.difficulty));
-    }
-    return map;
-  }, [formations, actors]);
-
   const handleExport = () => {
-    const data = { actors, formations, trainingRecords, exportedAt: new Date().toISOString() };
+    const data = { actors, formations, safeSchemes, trainingRecords, exportedAt: new Date().toISOString() };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -92,15 +73,26 @@ export default function Library() {
     if (fileRef.current) fileRef.current.value = '';
   };
 
-  const detailFormation = detailId && tab === 'formations' ? formations.find((f) => f.id === detailId) : null;
+  const detailScheme = detailId && tab === 'schemes' ? safeSchemes.find((s) => s.id === detailId) : null;
   const detailRecord = detailId && tab === 'records' ? trainingRecords.find((r) => r.id === detailId) : null;
-  const detailRating = detailFormation ? formationRatings.get(detailFormation.id) : detailRecord?.safetyRating;
+  const detailRating = detailScheme?.safetyRating || detailRecord?.safetyRating;
+  const detailFormation = detailScheme?.formationSnapshot || detailRecord?.formationSnapshot;
+
+  const handleApplyScheme = (scheme: SafeScheme) => {
+    const existing = formations.find((f) => f.id === scheme.formationSnapshot.id);
+    if (!existing) {
+      alert('该方案的原始队形已不存在');
+      return;
+    }
+    setCurrentFormation(scheme.formationSnapshot.id);
+    alert('已切换到该方案队形');
+  };
 
   return (
     <div className="p-8">
       <PageHeader
         title="方案库"
-        subtitle="已验证安全队形方案存档与训练历史记录"
+        subtitle="已验证的安全队形方案存档与训练历史记录"
         icon={<Database className="w-6 h-6 text-safety-gold" />}
         actions={
           <div className="flex gap-2">
@@ -117,11 +109,11 @@ export default function Library() {
 
       <div className="flex gap-1 mb-6 bg-navy-900/50 p-1 rounded-xl w-fit border border-navy-700/40">
         <button
-          onClick={() => { setTab('formations'); setDetailId(null); }}
-          className={`px-5 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${tab === 'formations' ? 'bg-gradient-to-r from-navy-500 to-navy-600 text-white shadow-md' : 'text-navy-300 hover:text-navy-100'}`}
+          onClick={() => { setTab('schemes'); setDetailId(null); }}
+          className={`px-5 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${tab === 'schemes' ? 'bg-gradient-to-r from-safety-green/80 to-navy-500 text-white shadow-md' : 'text-navy-300 hover:text-navy-100'}`}
         >
-          <Layers className="w-4 h-4" />
-          队形方案 ({formations.length})
+          <ShieldCheck className="w-4 h-4" />
+          安全方案 ({safeSchemes.length})
         </button>
         <button
           onClick={() => { setTab('records'); setDetailId(null); }}
@@ -134,53 +126,56 @@ export default function Library() {
 
       <div className="grid grid-cols-12 gap-6">
         <div className="col-span-12 lg:col-span-7">
-          {tab === 'formations' && (
-            formations.length === 0 ? (
+          {tab === 'schemes' && (
+            safeSchemes.length === 0 ? (
               <div className="glass-card rounded-xl p-16 text-center">
-                <Layers className="w-16 h-16 mx-auto text-navy-600 mb-4" />
-                <p className="text-navy-300">暂无队形方案，请到「队形搭建」中创建</p>
+                <ShieldCheck className="w-16 h-16 mx-auto text-navy-600 mb-4" />
+                <p className="text-navy-300 mb-2">暂无安全方案</p>
+                <p className="text-sm text-navy-500 mb-4">在「失稳预警」页通过校核的队形可保存为安全方案</p>
+                <div className="text-xs text-navy-500 bg-navy-900/40 rounded-lg p-3 max-w-xs mx-auto text-left">
+                  <div className="font-medium text-navy-300 mb-1">入库条件：</div>
+                  <div>• 所有位置分配演员</div>
+                  <div>• 无危险级告警</div>
+                  <div>• 安全评级 A 级或 B 级</div>
+                </div>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {formations.map((f) => {
-                  const rating = formationRatings.get(f.id)!;
-                  const diff = difficultyLabels[f.difficulty];
-                  const assignedCount = f.positions.filter(p => p.actorId).length;
-                  return (
-                    <div
-                      key={f.id}
-                      className={`glass-card rounded-xl p-4 cursor-pointer transition-all hover:border-safety-gold/40 ${detailId === f.id ? 'gold-border' : ''}`}
-                      onClick={() => setDetailId(f.id)}
-                    >
-                      <div className="flex items-start justify-between gap-3 mb-3">
-                        <div className="w-16 h-16 shrink-0 bg-navy-900/60 rounded-lg border border-navy-700/40 overflow-hidden">
-                          <MiniFormationPreview formation={f} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-semibold text-navy-50 truncate">{f.name}</div>
-                          <div className="flex items-center gap-2 mt-1 flex-wrap">
-                            <span className="badge" style={{ background: `${diff.color}22`, color: diff.color, border: `1px solid ${diff.color}55` }}>
-                              {diff.label}
-                            </span>
-                            <span className="badge bg-navy-700/50 text-navy-200 border border-navy-600/40">
-                              {f.layers}层
-                            </span>
-                            <span className="badge bg-navy-700/50 text-navy-200 border border-navy-600/40">
-                              <Users className="w-3 h-3" />{assignedCount}/{f.positions.length}
-                            </span>
-                          </div>
-                        </div>
+                {safeSchemes.map((scheme) => (
+                  <div
+                    key={scheme.id}
+                    className={`glass-card rounded-xl p-4 cursor-pointer transition-all hover:border-safety-green/40 ${detailId === scheme.id ? 'border-safety-green/60 bg-safety-green/5' : ''}`}
+                    onClick={() => setDetailId(scheme.id)}
+                  >
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div className="w-16 h-16 shrink-0 bg-navy-900/60 rounded-lg border border-navy-700/40 overflow-hidden">
+                        <MiniFormationPreview formation={scheme.formationSnapshot} />
                       </div>
-                      <div className="flex items-center justify-between">
-                        <RatingBadge rating={rating} size="sm" />
-                        <div className="flex items-center gap-1 text-navy-400 text-xs">
-                          <Calendar className="w-3 h-3" />
-                          {new Date(f.createdAt).toLocaleDateString('zh-CN')}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-navy-50 truncate">{scheme.name}</div>
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                          <span className="badge bg-safety-green/15 text-safety-green border border-safety-green/40">
+                            <ShieldCheck className="w-3 h-3" />
+                            已验证
+                          </span>
+                          <span className="badge bg-navy-700/50 text-navy-200 border border-navy-600/40">
+                            {scheme.formationSnapshot.layers}层
+                          </span>
+                          <span className="badge bg-navy-700/50 text-navy-200 border border-navy-600/40">
+                            <Users className="w-3 h-3" />{scheme.totalActors}人
+                          </span>
                         </div>
                       </div>
                     </div>
-                  );
-                })}
+                    <div className="flex items-center justify-between">
+                      <RatingBadge rating={scheme.safetyRating} size="sm" />
+                      <div className="flex items-center gap-1 text-navy-400 text-xs">
+                        <Calendar className="w-3 h-3" />
+                        {new Date(scheme.verifiedAt).toLocaleDateString('zh-CN')}
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )
           )}
@@ -189,7 +184,8 @@ export default function Library() {
             trainingRecords.length === 0 ? (
               <div className="glass-card rounded-xl p-16 text-center">
                 <ClipboardList className="w-16 h-16 mx-auto text-navy-600 mb-4" />
-                <p className="text-navy-300">暂无训练记录，可在「失稳预警」中记录训练</p>
+                <p className="text-navy-300">暂无训练记录</p>
+                <p className="text-sm text-navy-500 mt-1">可在「失稳预警」页记录每次训练</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -206,7 +202,7 @@ export default function Library() {
                           <FileText className="w-6 h-6 text-safety-gold" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="font-semibold text-navy-50">{f.name}</div>
+                          <div className="font-semibold text-navy-50 truncate">{f.name}</div>
                           <div className="text-xs text-navy-400 flex items-center gap-2 mt-0.5">
                             <Calendar className="w-3 h-3" />
                             {new Date(r.trainingDate).toLocaleString('zh-CN')}
@@ -226,24 +222,25 @@ export default function Library() {
         </div>
 
         <div className="col-span-12 lg:col-span-5">
-          {(detailFormation || detailRecord) && detailRating ? (
+          {detailScheme || detailRecord ? (
             <div className="glass-card rounded-xl p-6 sticky top-8">
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <h3 className="font-display text-lg text-navy-50">
-                    {tab === 'formations' ? detailFormation!.name : detailRecord!.formationSnapshot.name}
+                    {detailScheme ? detailScheme.name : detailRecord!.formationSnapshot.name}
                   </h3>
                   <p className="text-xs text-navy-400 mt-0.5">
-                    {tab === 'formations'
-                      ? `创建于 ${new Date(detailFormation!.createdAt).toLocaleString('zh-CN')}`
-                      : `训练于 ${new Date(detailRecord!.trainingDate).toLocaleString('zh-CN')}`}
+                    {detailScheme
+                      ? `验证于 ${new Date(detailScheme.verifiedAt).toLocaleString('zh-CN')}`
+                      : `训练于 ${new Date(detailRecord!.trainingDate).toLocaleString('zh-CN')}`
+                    }
                   </p>
                 </div>
                 <div className="flex gap-1">
-                  {tab === 'formations' && (
+                  {detailScheme && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); setCurrentFormation(detailFormation!.id); }}
-                      className="p-2 rounded-lg hover:bg-navy-700/50 text-navy-300 hover:text-safety-gold transition-colors"
+                      onClick={(e) => { e.stopPropagation(); handleApplyScheme(detailScheme); }}
+                      className="p-2 rounded-lg hover:bg-navy-700/50 text-navy-300 hover:text-safety-green transition-colors"
                       title="应用此方案"
                     >
                       <Eye className="w-4 h-4" />
@@ -253,8 +250,8 @@ export default function Library() {
                     onClick={(e) => {
                       e.stopPropagation();
                       if (confirm('确定删除?')) {
-                        if (tab === 'formations') deleteFormation(detailFormation!.id);
-                        else deleteTrainingRecord(detailRecord!.id);
+                        if (detailScheme) deleteSafeScheme(detailScheme.id);
+                        else if (detailRecord) deleteTrainingRecord(detailRecord.id);
                         setDetailId(null);
                       }
                     }}
@@ -271,42 +268,64 @@ export default function Library() {
                 </div>
               </div>
 
-              <div className="mb-4">
-                <RatingBadge rating={detailRating} size="md" />
-              </div>
-
-              {tab === 'formations' && (
-                <div className="text-sm text-navy-300 space-y-1.5 mb-4 pb-4 border-b border-navy-700/40">
-                  <div className="flex justify-between"><span>层数</span><span className="text-navy-100 font-medium">{detailFormation!.layers}</span></div>
-                  <div className="flex justify-between"><span>难度</span><span style={{ color: difficultyLabels[detailFormation!.difficulty].color }} className="font-medium">{difficultyLabels[detailFormation!.difficulty].label}</span></div>
-                  <div className="flex justify-between"><span>位置数</span><span className="text-navy-100 font-medium">{detailFormation!.positions.length}</span></div>
-                  <div className="flex justify-between"><span>已分配演员</span><span className="text-navy-100 font-medium">{detailFormation!.positions.filter(p => p.actorId).length}</span></div>
+              {detailRating && (
+                <div className="mb-4">
+                  <RatingBadge rating={detailRating} size="md" />
                 </div>
               )}
 
-              <div>
-                <h4 className="text-sm font-semibold text-navy-200 mb-3">
-                  风险告警 ({detailRating.warnings.length})
-                </h4>
-                {detailRating.warnings.length === 0 ? (
-                  <div className="text-sm text-navy-400 text-center py-6 bg-navy-900/40 rounded-lg">无告警，队形安全</div>
-                ) : (
-                  <div className="space-y-2 max-h-80 overflow-auto">
-                    {detailRating.warnings.map((w) => {
-                      const colors = {
-                        danger: { bg: 'rgba(230, 57, 70, 0.12)', text: '#E63946', border: 'rgba(230, 57, 70, 0.3)' },
-                        warning: { bg: 'rgba(244, 162, 97, 0.12)', text: '#F4A261', border: 'rgba(244, 162, 97, 0.3)' },
-                        info: { bg: 'rgba(42, 157, 143, 0.12)', text: '#2A9D8F', border: 'rgba(42, 157, 143, 0.3)' },
-                      }[w.level];
-                      return (
-                        <div key={w.id} className="rounded-lg p-3 text-sm" style={{ background: colors.bg, border: `1px solid ${colors.border}`, color: colors.text }}>
-                          {w.message}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+              {detailFormation && (
+                <div className="text-sm text-navy-300 space-y-1.5 mb-4 pb-4 border-b border-navy-700/40">
+                  <div className="flex justify-between"><span>层数</span><span className="text-navy-100 font-medium">{detailFormation.layers}</span></div>
+                  <div className="flex justify-between"><span>难度</span><span className="text-safety-gold font-medium">
+                    {{ easy: '简单', normal: '普通', hard: '困难', extreme: '极限' }[detailFormation.difficulty]}
+                  </span></div>
+                  <div className="flex justify-between"><span>位置数</span><span className="text-navy-100 font-medium">{detailFormation.positions.length}</span></div>
+                  <div className="flex justify-between"><span>已分配演员</span><span className="text-navy-100 font-medium">{detailFormation.positions.filter(p => p.actorId).length}</span></div>
+                  {detailScheme && (
+                    <div className="flex justify-between"><span>总重量</span><span className="text-navy-100 font-medium">{detailScheme.totalWeight.toFixed(1)} kg</span></div>
+                  )}
+                </div>
+              )}
+
+              {detailScheme?.notes && (
+                <div className="mb-4 pb-4 border-b border-navy-700/40">
+                  <div className="text-xs text-navy-400 mb-1">备注</div>
+                  <div className="text-sm text-navy-200 bg-navy-900/40 rounded-lg p-2">{detailScheme.notes}</div>
+                </div>
+              )}
+              {detailRecord?.notes && (
+                <div className="mb-4 pb-4 border-b border-navy-700/40">
+                  <div className="text-xs text-navy-400 mb-1">训练备注</div>
+                  <div className="text-sm text-navy-200 bg-navy-900/40 rounded-lg p-2">{detailRecord.notes}</div>
+                </div>
+              )}
+
+              {detailRating && (
+                <div>
+                  <h4 className="text-sm font-semibold text-navy-200 mb-3">
+                    风险告警 ({detailRating.warnings.length})
+                  </h4>
+                  {detailRating.warnings.length === 0 ? (
+                    <div className="text-sm text-navy-400 text-center py-6 bg-navy-900/40 rounded-lg">无告警，队形安全</div>
+                  ) : (
+                    <div className="space-y-2 max-h-72 overflow-auto">
+                      {detailRating.warnings.map((w) => {
+                        const colors = {
+                          danger: { bg: 'rgba(230, 57, 70, 0.12)', text: '#E63946', border: 'rgba(230, 57, 70, 0.3)' },
+                          warning: { bg: 'rgba(244, 162, 97, 0.12)', text: '#F4A261', border: 'rgba(244, 162, 97, 0.3)' },
+                          info: { bg: 'rgba(42, 157, 143, 0.12)', text: '#2A9D8F', border: 'rgba(42, 157, 143, 0.3)' },
+                        }[w.level];
+                        return (
+                          <div key={w.id} className="rounded-lg p-3 text-sm" style={{ background: colors.bg, border: `1px solid ${colors.border}`, color: colors.text }}>
+                            {w.message}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ) : (
             <div className="glass-card rounded-xl p-12 text-center">

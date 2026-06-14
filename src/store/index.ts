@@ -1,11 +1,12 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Actor, Formation, TrainingRecord } from '@/types';
+import type { Actor, Formation, TrainingRecord, SafeScheme, SafetyRating } from '@/types';
 import { generateId, buildPyramidFormation } from '@/utils/physics';
 
 interface AppState {
   actors: Actor[];
   formations: Formation[];
+  safeSchemes: SafeScheme[];
   trainingRecords: TrainingRecord[];
   currentFormationId: string | null;
 
@@ -19,10 +20,13 @@ interface AppState {
   setCurrentFormation: (id: string | null) => void;
   assignActorToPosition: (formationId: string, positionId: string, actorId: string | null) => void;
 
+  addSafeScheme: (scheme: Omit<SafeScheme, 'id' | 'verifiedAt'>) => void;
+  deleteSafeScheme: (id: string) => void;
+
   addTrainingRecord: (record: Omit<TrainingRecord, 'id'>) => void;
   deleteTrainingRecord: (id: string) => void;
 
-  importData: (data: { actors?: Actor[]; formations?: Formation[]; trainingRecords?: TrainingRecord[] }) => void;
+  importData: (data: { actors?: Actor[]; formations?: Formation[]; safeSchemes?: SafeScheme[]; trainingRecords?: TrainingRecord[] }) => void;
   clearAllData: () => void;
 }
 
@@ -50,6 +54,7 @@ export const useAppStore = create<AppState>()(
     (set) => ({
       actors: sampleActors,
       formations: [defaultFormation],
+      safeSchemes: [],
       trainingRecords: [],
       currentFormationId: defaultFormation.id,
 
@@ -111,6 +116,19 @@ export const useAppStore = create<AppState>()(
           }),
         })),
 
+      addSafeScheme: (scheme) =>
+        set((s) => ({
+          safeSchemes: [
+            { ...scheme, id: generateId(), verifiedAt: new Date().toISOString() },
+            ...s.safeSchemes,
+          ],
+        })),
+
+      deleteSafeScheme: (id) =>
+        set((s) => ({
+          safeSchemes: s.safeSchemes.filter((sc) => sc.id !== id),
+        })),
+
       addTrainingRecord: (record) =>
         set((s) => ({
           trainingRecords: [
@@ -128,10 +146,11 @@ export const useAppStore = create<AppState>()(
         set((s) => ({
           actors: data.actors ?? s.actors,
           formations: data.formations ?? s.formations,
+          safeSchemes: data.safeSchemes ?? s.safeSchemes,
           trainingRecords: data.trainingRecords ?? s.trainingRecords,
         })),
 
-      clearAllData: () => set({ actors: [], formations: [], trainingRecords: [], currentFormationId: null }),
+      clearAllData: () => set({ actors: [], formations: [], safeSchemes: [], trainingRecords: [], currentFormationId: null }),
     }),
     {
       name: 'acrobat-safety-app-storage',

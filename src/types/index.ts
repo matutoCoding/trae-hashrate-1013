@@ -78,3 +78,14 @@ export interface TrainingRecord {
   notes?: string;
   safetyRating: SafetyRating;
 }
+
+export interface SafeScheme {
+  id: string;
+  name: string;
+  formationSnapshot: Formation;
+  safetyRating: SafetyRating;
+  verifiedAt: string;
+  notes?: string;
+  totalActors: number;
+  totalWeight: number;
+}
